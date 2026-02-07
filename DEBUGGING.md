@@ -31,7 +31,7 @@ OpenAI API keys should:
 ### 4. Verify API Key Permissions
 
 Make sure your OpenAI API key has:
-- Access to the GPT-4o model (or whichever model you're using)
+- Access to the GPT-5.2 model (or whichever model you're using)
 - Sufficient credits/quota
 - Not been revoked or expired
 
@@ -66,7 +66,7 @@ You can test if your API key works:
 curl https://api.openai.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}'
+  -d '{"model": "gpt-5.2", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}'
 ```
 
 If this returns an error, the issue is with your API key, not the app.
