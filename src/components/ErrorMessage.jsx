@@ -13,7 +13,7 @@ export default function ErrorMessage({ message, variant = "error" }) {
           : "border-[#ef4444] text-[#ef4444] bg-[#1f0c0c]"
       }`}
     >
-      {message}
+      <pre className="whitespace-pre-wrap font-sans">{message}</pre>
     </div>
   );
 }

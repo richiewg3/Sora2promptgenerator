@@ -93,7 +93,27 @@ export default function App() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || "Unexpected error, try again");
+        // Build detailed error message
+        let errorMsg = data?.error || "Unexpected error, try again";
+        
+        if (data?.details) {
+          errorMsg += `\n\nDetails: ${data.details}`;
+        }
+        
+        if (data?.suggestion) {
+          errorMsg += `\n\nSuggestion: ${data.suggestion}`;
+        }
+        
+        if (data?.debug) {
+          errorMsg += `\n\nDebug Info:`;
+          errorMsg += `\n- Model: ${data.debug.model}`;
+          errorMsg += `\n- API Key Set: ${data.debug.hasApiKey ? 'Yes' : 'No'}`;
+          if (data.debug.apiKeyPrefix && data.debug.apiKeyPrefix !== 'none') {
+            errorMsg += `\n- API Key Prefix: ${data.debug.apiKeyPrefix}`;
+          }
+        }
+        
+        throw new Error(errorMsg);
       }
 
       setEnhancedPrompt(data.enhancedPrompt || "");

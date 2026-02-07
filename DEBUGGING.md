@@ -63,8 +63,10 @@ Or in Vercel Dashboard:
 
 You can test if your API key works:
 ```bash
-curl https://api.openai.com/v1/models/gpt-5.2 \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl https://api.openai.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"model": "gpt-5.2", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}'
 ```
 
 If this returns an error, the issue is with your API key, not the app.
