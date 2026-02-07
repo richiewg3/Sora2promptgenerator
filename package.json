@@ -1,0 +1,35 @@
+{
+  "name": "sora-prompt-enhancer",
+  "version": "1.0.0",
+  "description": "Sora 2 prompt enhancer with image-to-video guidance.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richiewg3/Sora2promptgenerator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/richiewg3/Sora2promptgenerator/issues"
+  },
+  "homepage": "https://github.com/richiewg3/Sora2promptgenerator#readme",
+  "dependencies": {
+    "openai": "^6.18.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@vitejs/plugin-react": "^5.1.3",
+    "autoprefixer": "^10.4.24",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "vite": "^7.3.1"
+  }
+}
