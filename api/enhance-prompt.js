@@ -194,36 +194,82 @@ TECHNICAL SPECIFICATIONS:
 
 Now process the user inputs and generate the enhanced Sora 2 prompt following this framework exactly.`;
 
-const getErrorMessage = (error) => {
+const getDetailedErrorInfo = (error) => {
   const status = error?.status || error?.response?.status;
-  if (status === 401 || status === 403) {
-    return "Configuration error";
+  const errorMessage = error?.message || "Unknown error";
+  const errorType = error?.type || error?.error?.type;
+  const errorCode = error?.code || error?.error?.code;
+  
+  // API key issues
+  if (status === 401) {
+    return {
+      status: 401,
+      userMessage: "API Key Error: Invalid or missing OpenAI API key",
+      details: `The API key is invalid or has been revoked. Error: ${errorMessage}`,
+      suggestion: "Check that your OPENAI_API_KEY in Vercel is correct and active"
+    };
   }
+  
+  if (status === 403) {
+    return {
+      status: 403,
+      userMessage: "Access Denied: No permission to use this model",
+      details: `Your API key doesn't have access to gpt-5.2. Error: ${errorMessage}`,
+      suggestion: "Your OpenAI account may need to be upgraded or the model may not be available yet"
+    };
+  }
+  
+  // Rate limiting
   if (status === 429) {
-    return "Too many requests, wait a moment";
+    return {
+      status: 429,
+      userMessage: "Rate Limit Exceeded",
+      details: `Too many requests. Error: ${errorMessage}`,
+      suggestion: "Wait a few minutes and try again, or upgrade your OpenAI plan"
+    };
   }
+  
+  // Model not found
+  if (status === 404 || errorMessage.includes("model") || errorMessage.includes("does not exist")) {
+    return {
+      status: 404,
+      userMessage: "Model Not Found",
+      details: `The model 'gpt-5.2' may not exist or is not available. Error: ${errorMessage}`,
+      suggestion: "The model name might be incorrect or not yet available to your account"
+    };
+  }
+  
+  // Timeout
   if (
     error?.code === "ETIMEDOUT" ||
     error?.code === "ECONNABORTED" ||
     error?.name === "AbortError"
   ) {
-    return "Request timed out, try again";
+    return {
+      status: 504,
+      userMessage: "Request Timeout",
+      details: `The request took too long. Error: ${errorMessage}`,
+      suggestion: "Try again - this is usually temporary"
+    };
   }
-  return "Unexpected error, try again";
-};
-
-const getStatusCode = (error) => {
-  const status = error?.status || error?.response?.status;
-  if (status === 401 || status === 403) return 500;
-  if (status === 429) return 429;
-  if (
-    error?.code === "ETIMEDOUT" ||
-    error?.code === "ECONNABORTED" ||
-    error?.name === "AbortError"
-  ) {
-    return 504;
+  
+  // Insufficient quota
+  if (errorMessage.includes("quota") || errorMessage.includes("billing")) {
+    return {
+      status: 429,
+      userMessage: "Quota Exceeded",
+      details: `Your OpenAI account has insufficient quota/credits. Error: ${errorMessage}`,
+      suggestion: "Add credits to your OpenAI account or check your billing settings"
+    };
   }
-  return 500;
+  
+  // Generic error with full details
+  return {
+    status: status || 500,
+    userMessage: "API Error",
+    details: `Status: ${status || 'none'}, Type: ${errorType || 'none'}, Code: ${errorCode || 'none'}, Message: ${errorMessage}`,
+    suggestion: "Check the error details above and verify your API configuration"
+  };
 };
 
 export default async function handler(req, res) {
@@ -311,15 +357,30 @@ export default async function handler(req, res) {
 
     res.status(200).json({ success: true, enhancedPrompt });
   } catch (error) {
-    console.error("enhance-prompt error:", error);
+    console.error("=== OPENAI API ERROR ===");
+    console.error("Full error:", error);
     console.error("Error details:", {
       message: error?.message,
       status: error?.status,
       code: error?.code,
       type: error?.type,
+      error: error?.error,
     });
-    res
-      .status(getStatusCode(error))
-      .json({ success: false, error: getErrorMessage(error) });
+    
+    const errorInfo = getDetailedErrorInfo(error);
+    
+    console.error("Sending to user:", errorInfo);
+    
+    res.status(errorInfo.status).json({ 
+      success: false, 
+      error: errorInfo.userMessage,
+      details: errorInfo.details,
+      suggestion: errorInfo.suggestion,
+      debug: {
+        model: "gpt-5.2",
+        hasApiKey: !!process.env.OPENAI_API_KEY,
+        apiKeyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 7) + "..." : "none"
+      }
+    });
   }
 }
