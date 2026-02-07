@@ -233,9 +233,14 @@ export default async function handler(req, res) {
   }
 
   if (!process.env.OPENAI_API_KEY) {
-    res.status(500).json({ success: false, error: "Configuration error" });
+    console.error("OPENAI_API_KEY is not set");
+    res.status(500).json({ success: false, error: "Configuration error: API key not found" });
     return;
   }
+
+  // Log the first few characters of the API key for debugging (safely)
+  console.log("API key prefix:", process.env.OPENAI_API_KEY.substring(0, 7) + "...");
+
 
   let payload = req.body;
   if (typeof payload === "string") {
@@ -267,7 +272,7 @@ export default async function handler(req, res) {
     });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.2",
       messages: [
         {
           role: "system",
@@ -306,7 +311,13 @@ export default async function handler(req, res) {
 
     res.status(200).json({ success: true, enhancedPrompt });
   } catch (error) {
-    console.error("enhance-prompt error", error);
+    console.error("enhance-prompt error:", error);
+    console.error("Error details:", {
+      message: error?.message,
+      status: error?.status,
+      code: error?.code,
+      type: error?.type,
+    });
     res
       .status(getStatusCode(error))
       .json({ success: false, error: getErrorMessage(error) });
