@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { getAIConfig, diagnostics } from "./_lib/ai-client.js";
 
 const SYSTEM_PROMPT = `# SORA 2 IMAGE-TO-VIDEO PROMPT ENHANCEMENT SYSTEM
 
@@ -194,83 +194,77 @@ TECHNICAL SPECIFICATIONS:
 
 Now process the user inputs and generate the enhanced Sora 2 prompt following this framework exactly.`;
 
-const getDetailedErrorInfo = (error) => {
+// ── Error helper ────────────────────────────────────────────────────
+
+const getDetailedErrorInfo = (error, modelUsed) => {
   const status = error?.status || error?.response?.status;
   const errorMessage = error?.message || "Unknown error";
   const errorType = error?.type || error?.error?.type;
   const errorCode = error?.code || error?.error?.code;
-  
-  // API key issues
+
   if (status === 401) {
     return {
       status: 401,
-      userMessage: "API Key Error: Invalid or missing OpenAI API key",
+      userMessage: "API Key Error: Invalid or missing API key",
       details: `The API key is invalid or has been revoked. Error: ${errorMessage}`,
-      suggestion: "Check that your OPENAI_API_KEY in Vercel is correct and active"
+      suggestion: "Check that your AI_GATEWAY_API_KEY or OPENAI_API_KEY in Vercel is correct and active",
     };
   }
-  
+
   if (status === 403) {
     return {
       status: 403,
       userMessage: "Access Denied: No permission to use this model",
-      details: `Your API key doesn't have access to gpt-5.2. Error: ${errorMessage}`,
-      suggestion: "Your OpenAI account may need to be upgraded or the model may not be available yet"
+      details: `Your API key doesn't have access to ${modelUsed}. Error: ${errorMessage}`,
+      suggestion: "Your account may need to be upgraded or the model may not be available yet",
     };
   }
-  
-  // Rate limiting
+
   if (status === 429) {
     return {
       status: 429,
       userMessage: "Rate Limit Exceeded",
       details: `Too many requests. Error: ${errorMessage}`,
-      suggestion: "Wait a few minutes and try again, or upgrade your OpenAI plan"
+      suggestion: "Wait a few minutes and try again, or upgrade your plan",
     };
   }
-  
-  // Model not found
+
   if (status === 404 || errorMessage.includes("model") || errorMessage.includes("does not exist")) {
     return {
       status: 404,
       userMessage: "Model Not Found",
-      details: `The model 'gpt-5.2' may not exist or is not available. Error: ${errorMessage}`,
-      suggestion: "The model name might be incorrect or not yet available to your account"
+      details: `The model '${modelUsed}' may not exist or is not available. Error: ${errorMessage}`,
+      suggestion: "Set AI_MODEL env var to an available model, or check /api/models for available models",
     };
   }
-  
-  // Timeout
-  if (
-    error?.code === "ETIMEDOUT" ||
-    error?.code === "ECONNABORTED" ||
-    error?.name === "AbortError"
-  ) {
+
+  if (error?.code === "ETIMEDOUT" || error?.code === "ECONNABORTED" || error?.name === "AbortError") {
     return {
       status: 504,
       userMessage: "Request Timeout",
       details: `The request took too long. Error: ${errorMessage}`,
-      suggestion: "Try again - this is usually temporary"
+      suggestion: "Try again - this is usually temporary",
     };
   }
-  
-  // Insufficient quota
+
   if (errorMessage.includes("quota") || errorMessage.includes("billing")) {
     return {
       status: 429,
       userMessage: "Quota Exceeded",
-      details: `Your OpenAI account has insufficient quota/credits. Error: ${errorMessage}`,
-      suggestion: "Add credits to your OpenAI account or check your billing settings"
+      details: `Your account has insufficient quota/credits. Error: ${errorMessage}`,
+      suggestion: "Add credits to your account or check your billing settings",
     };
   }
-  
-  // Generic error with full details
+
   return {
     status: status || 500,
     userMessage: "API Error",
-    details: `Status: ${status || 'none'}, Type: ${errorType || 'none'}, Code: ${errorCode || 'none'}, Message: ${errorMessage}`,
-    suggestion: "Check the error details above and verify your API configuration"
+    details: `Status: ${status || "none"}, Type: ${errorType || "none"}, Code: ${errorCode || "none"}, Message: ${errorMessage}`,
+    suggestion: "Check the error details above and verify your API configuration",
   };
 };
+
+// ── Handler ─────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -278,21 +272,30 @@ export default async function handler(req, res) {
     return;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    console.error("OPENAI_API_KEY is not set");
-    res.status(500).json({ success: false, error: "Configuration error: API key not found" });
+  // ---- Resolve AI configuration (client + model) ----
+  let aiConfig;
+  try {
+    aiConfig = await getAIConfig();
+  } catch (err) {
+    console.error("[enhance-prompt] AI config error:", err.message);
+    res.status(500).json({
+      success: false,
+      error: `Configuration error: ${err.message}`,
+    });
     return;
   }
 
-  // Log the first few characters of the API key for debugging (safely)
-  console.log("API key prefix:", process.env.OPENAI_API_KEY.substring(0, 7) + "...");
+  const { client, providerMode, baseURLUsed, modelUsed, keySource, apiKeyPrefix } = aiConfig;
+  const diag = diagnostics(aiConfig);
 
+  console.log(`[enhance-prompt] providerMode=${providerMode} model=${modelUsed} baseURL=${baseURLUsed}`);
 
+  // ---- Parse body ----
   let payload = req.body;
   if (typeof payload === "string") {
     try {
       payload = JSON.parse(payload);
-    } catch (error) {
+    } catch (_) {
       res.status(400).json({ success: false, error: "Invalid JSON payload" });
       return;
     }
@@ -301,24 +304,16 @@ export default async function handler(req, res) {
   const { image, initialPrompt, specificGoals } = payload || {};
 
   if (!image || !initialPrompt) {
-    res
-      .status(400)
-      .json({ success: false, error: "Missing required fields" });
+    res.status(400).json({ success: false, error: "Missing required fields" });
     return;
   }
 
-  const imageUrl = image.startsWith("data:")
-    ? image
-    : `data:image/jpeg;base64,${image}`;
+  const imageUrl = image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
 
+  // ---- Call chat completions ----
   try {
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      timeout: 30000,
-    });
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.2",
+    const response = await client.chat.completions.create({
+      model: modelUsed,
       messages: [
         {
           role: "system",
@@ -335,9 +330,7 @@ export default async function handler(req, res) {
             },
             {
               type: "text",
-              text: `Initial Prompt: ${initialPrompt}\n\nSpecific Goals: ${
-                specificGoals || "None"
-              }`,
+              text: `Initial Prompt: ${initialPrompt}\n\nSpecific Goals: ${specificGoals || "None"}`,
             },
           ],
         },
@@ -349,38 +342,23 @@ export default async function handler(req, res) {
     const enhancedPrompt = response?.choices?.[0]?.message?.content?.trim();
 
     if (!enhancedPrompt) {
-      res
-        .status(500)
-        .json({ success: false, error: "Unexpected error, try again" });
+      res.status(500).json({ success: false, error: "Unexpected error, try again" });
       return;
     }
 
     res.status(200).json({ success: true, enhancedPrompt });
   } catch (error) {
-    console.error("=== OPENAI API ERROR ===");
+    console.error("=== AI API ERROR ===");
     console.error("Full error:", error);
-    console.error("Error details:", {
-      message: error?.message,
-      status: error?.status,
-      code: error?.code,
-      type: error?.type,
-      error: error?.error,
-    });
-    
-    const errorInfo = getDetailedErrorInfo(error);
-    
-    console.error("Sending to user:", errorInfo);
-    
-    res.status(errorInfo.status).json({ 
-      success: false, 
+
+    const errorInfo = getDetailedErrorInfo(error, modelUsed);
+
+    res.status(errorInfo.status).json({
+      success: false,
       error: errorInfo.userMessage,
       details: errorInfo.details,
       suggestion: errorInfo.suggestion,
-      debug: {
-        model: "gpt-5.2",
-        hasApiKey: !!process.env.OPENAI_API_KEY,
-        apiKeyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 7) + "..." : "none"
-      }
+      debug: diag,
     });
   }
 }
