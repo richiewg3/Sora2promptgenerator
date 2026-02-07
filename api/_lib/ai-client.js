@@ -50,8 +50,14 @@ export function getClient() {
 
 // ── Model preference lists ──────────────────────────────────────────
 
-const GATEWAY_PREFERRED = ["openai/gpt-5", "openai/gpt-5-mini", "openai/gpt-4o"];
-const OPENAI_PREFERRED = ["gpt-5.2", "gpt-4o"];
+const GATEWAY_PREFERRED = [
+  "openai/gpt-5.2",
+  "openai/gpt-5",
+  "openai/gpt-5-mini",
+  "openai/gpt-4o",
+  "openai/gpt-4.1",
+];
+const OPENAI_PREFERRED = ["gpt-5.2", "gpt-5", "gpt-5-mini", "gpt-4o", "gpt-4.1"];
 
 const GATEWAY_FALLBACK = "openai/gpt-4o";
 const OPENAI_FALLBACK = "gpt-4o";
